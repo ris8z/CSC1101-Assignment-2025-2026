@@ -8,6 +8,7 @@ public class WarehouseConfig {
     };
 
     public static final int INITIAL_BOXES_PER_SECTION = 5;
+    public static final int SECTION_CAPACITY = 10;
 
     public static final double DELIVERY_PROBABILITY = 0.01;
     public static final int BOXES_PER_DELIVERY = 10;

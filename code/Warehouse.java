@@ -7,7 +7,8 @@ public class Warehouse {
         System.out.println("tick_ms=" + WarehouseConfig.TICK_MS
                 + " sections=" + WarehouseConfig.SECTION_NAMES.length
                 + " stockers=" + WarehouseConfig.NUM_STOCKERS
-                + " pickers=" + WarehouseConfig.NUM_PICKERS);
+                + " pickers=" + WarehouseConfig.NUM_PICKERS
+                + " section_capacity=" + WarehouseConfig.SECTION_CAPACITY);
 
         Clock.getInstance().start();
 
@@ -16,7 +17,7 @@ public class Warehouse {
 
         for (int i = 0; i < WarehouseConfig.SECTION_NAMES.length; i++) {
             String name = WarehouseConfig.SECTION_NAMES[i];
-            Section section = new Section(name);
+            Section section = new Section(name, WarehouseConfig.SECTION_CAPACITY);
             section.preload(WarehouseConfig.INITIAL_BOXES_PER_SECTION);
             sectionMap.put(name, section);
             sectionArray[i] = section;

@@ -6,18 +6,20 @@ import java.util.concurrent.locks.ReentrantLock;
 public class Section {
 
     private final String name;
+    private final int capacity;
     private final Queue<String> boxes = new LinkedList<>();
 
-    // Fair lock to reduce starvation
     private final ReentrantLock lock = new ReentrantLock(true);
     private final Condition stockerDone = lock.newCondition();
     private final Condition stockArrived = lock.newCondition();
+    private final Condition spaceFreed = lock.newCondition();
 
     private boolean stockerActive = false;
     private int pickersWaiting = 0;
 
-    public Section(String name) {
+    public Section(String name, int capacity) {
         this.name = name;
+        this.capacity = capacity;
     }
 
     public void acquireStockerLock() throws InterruptedException {
@@ -41,20 +43,26 @@ public class Section {
         }
     }
 
-    public void addBox(String boxLabel) {
+    // Returns false if section is full (stocker should release lock and wait/move on)
+    public boolean addBox(String boxLabel) throws InterruptedException {
         lock.lock();
         try {
+            if (boxes.size() >= capacity) {
+                return false; // full — caller must release stocker lock
+            }
             boxes.add(boxLabel);
             stockArrived.signalAll();
+            return true;
         } finally {
             lock.unlock();
         }
     }
 
-    public int availableCapacity() {
+    // Stocker calls this after releasing lock to wait for space to open up
+    public void waitForSpace() throws InterruptedException {
         lock.lock();
         try {
-            return Integer.MAX_VALUE - boxes.size();
+            while (boxes.size() >= capacity) spaceFreed.await();
         } finally {
             lock.unlock();
         }
@@ -71,7 +79,9 @@ public class Section {
                     stockArrived.await();
                     while (stockerActive) stockerDone.await();
                 }
-                return boxes.poll();
+                String box = boxes.poll();
+                spaceFreed.signalAll(); // notify any stocker waiting for space
+                return box;
             } finally {
                 pickersWaiting--;
             }
@@ -80,11 +90,18 @@ public class Section {
         }
     }
 
-    public String getName() { return name; }
+    public String getName()         { return name; }
+    public int getCapacity()        { return capacity; }
 
     public int getBoxCount() {
         lock.lock();
         try { return boxes.size(); }
+        finally { lock.unlock(); }
+    }
+
+    public boolean isFull() {
+        lock.lock();
+        try { return boxes.size() >= capacity; }
         finally { lock.unlock(); }
     }
 
@@ -95,6 +112,7 @@ public class Section {
     }
 
     public void preload(int count) {
-        for (int i = 0; i < count; i++) boxes.add(name);
+        int toLoad = Math.min(count, capacity);
+        for (int i = 0; i < toLoad; i++) boxes.add(name);
     }
 }

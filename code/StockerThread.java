@@ -2,7 +2,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class StockerThread implements Runnable {
-
     private final String id;
     private final StagingArea stagingArea;
     private final Map<String, Section> sections;
@@ -48,22 +47,30 @@ public class StockerThread implements Runnable {
 
             section.acquireStockerLock();
             Logger.log("stock_begin", "section", sectionName, "amount", toStock);
+            int stocked = 0;
+
             try {
-                int stocked = 0;
                 for (int i = 0; i < toStock; i++) {
-                    section.addBox(sectionName);
+                    while (!section.addBox(sectionName)) {
+                        Logger.log("section_full", "section", sectionName, "waiting_for_space", true);
+                        section.releaseStockerLock();
+                        section.waitForSpace();
+                        section.acquireStockerLock();
+                    }
                     Clock.sleepTicks(WarehouseConfig.STOCK_TICKS_PER_BOX);
                     stocked++;
                     trolley.put(sectionName, toStock - stocked);
                 }
                 trolley.put(sectionName, 0);
-                Logger.log("stock_end",
-                        "section", sectionName,
-                        "stocked", stocked,
-                        "remaining_load", trolleyTotal(trolley));
-            } finally {
+            }
+
+            finally {
                 section.releaseStockerLock();
             }
+            Logger.log("stock_end",
+                    "section", sectionName,
+                    "stocked", stocked,
+                    "remaining_load", trolleyTotal(trolley));
         }
 
         int remaining = trolleyTotal(trolley);
