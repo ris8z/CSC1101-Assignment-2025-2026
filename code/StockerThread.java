@@ -1,4 +1,6 @@
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class StockerThread implements Runnable {
@@ -28,7 +30,6 @@ public class StockerThread implements Runnable {
     }
 
     private void runOneRound() throws InterruptedException {
-        // Acquire trolley before taking from staging
         long waitStart = Clock.getTick();
         int trolleyId = trolleyPool.acquire();
         long waitedTicks = Clock.getTick() - waitStart;
@@ -41,7 +42,10 @@ public class StockerThread implements Runnable {
         Map<String, Integer> trolley = new HashMap<>(load);
         String currentLocation = "staging";
 
-        for (String sectionName : WarehouseConfig.SECTION_NAMES) {
+        // Sort sections by priority: most pickers waiting first, then fewest boxes
+        List<String> priority = prioritisedSections(trolley);
+
+        for (String sectionName : priority) {
             int toStock = trolley.getOrDefault(sectionName, 0);
             if (toStock == 0) continue;
 
@@ -81,9 +85,23 @@ public class StockerThread implements Runnable {
         Clock.sleepTicks(WarehouseConfig.TRAVEL_BASE_TICKS
                 + (long) remaining * WarehouseConfig.TRAVEL_TICKS_PER_BOX);
 
-        // Trolley must be empty before release
         Logger.log("release_trolley", "trolley_id", trolleyId, "remaining_load", remaining);
         trolleyPool.release(trolleyId);
+    }
+
+    private List<String> prioritisedSections(Map<String, Integer> trolley) {
+        List<String> names = new ArrayList<>();
+        for (String s : WarehouseConfig.SECTION_NAMES) {
+            if (trolley.getOrDefault(s, 0) > 0) names.add(s);
+        }
+        names.sort((a, b) -> {
+            Section sa = sections.get(a);
+            Section sb = sections.get(b);
+            int cmp = Integer.compare(sb.getPickersWaiting(), sa.getPickersWaiting());
+            if (cmp != 0) return cmp;
+            return Integer.compare(sa.getBoxCount(), sb.getBoxCount());
+        });
+        return names;
     }
 
     private int trolleyTotal(Map<String, Integer> trolley) {
