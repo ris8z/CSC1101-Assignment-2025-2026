@@ -41,4 +41,5 @@ public class WarehouseConfig {
     public static final int PICK_TICKS = getInt("pick_ticks", 1);
     // Set to -1 for a random seed
     public static final long RANDOM_SEED = getLong("random_seed", 42);
+    public static final int NUM_TROLLEYS = getInt("num_trolleys", -1);
 }
