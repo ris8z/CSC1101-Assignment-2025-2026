@@ -42,4 +42,7 @@ public class WarehouseConfig {
     // Set to -1 for a random seed
     public static final long RANDOM_SEED = getLong("random_seed", 42);
     public static final int NUM_TROLLEYS = getInt("num_trolleys", -1);
+    public static final int STOCKER_BREAK_INTERVAL_MIN = getInt("stocker_break_interval_min", 200);
+    public static final int STOCKER_BREAK_INTERVAL_MAX = getInt("stocker_break_interval_max", 300);
+    public static final int STOCKER_BREAK_DURATION     = getInt("stocker_break_duration", 150);
 }

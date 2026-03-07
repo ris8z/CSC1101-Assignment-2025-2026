@@ -2,18 +2,24 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 public class StockerThread implements Runnable {
     private final String id;
     private final StagingArea stagingArea;
     private final Map<String, Section> sections;
     private final TrolleyPool trolleyPool;
+    private final Random rand;
+
+    private long nextBreakAt;
 
     public StockerThread(String id, StagingArea stagingArea, Map<String, Section> sections, TrolleyPool trolleyPool) {
         this.id = id;
         this.stagingArea = stagingArea;
         this.sections = sections;
         this.trolleyPool = trolleyPool;
+        this.rand = new Random(WarehouseConfig.RANDOM_SEED + id.hashCode());
+        this.nextBreakAt = scheduleNextBreak();
     }
 
     @Override
@@ -21,12 +27,29 @@ public class StockerThread implements Runnable {
         Thread.currentThread().setName(id);
         while (!Thread.currentThread().isInterrupted()) {
             try {
+                takeBreakIfDue();
                 runOneRound();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
+    }
+
+    private void takeBreakIfDue() throws InterruptedException {
+        if (Clock.getTick() >= nextBreakAt) {
+            Logger.log("stocker_break_start", "duration", WarehouseConfig.STOCKER_BREAK_DURATION);
+            Clock.sleepTicks(WarehouseConfig.STOCKER_BREAK_DURATION);
+            Logger.log("stocker_break_end");
+            nextBreakAt = scheduleNextBreak();
+        }
+    }
+
+    private long scheduleNextBreak() {
+        int interval = WarehouseConfig.STOCKER_BREAK_INTERVAL_MIN
+                + rand.nextInt(WarehouseConfig.STOCKER_BREAK_INTERVAL_MAX
+                        - WarehouseConfig.STOCKER_BREAK_INTERVAL_MIN + 1);
+        return Clock.getTick() + interval;
     }
 
     private void runOneRound() throws InterruptedException {
@@ -42,7 +65,6 @@ public class StockerThread implements Runnable {
         Map<String, Integer> trolley = new HashMap<>(load);
         String currentLocation = "staging";
 
-        // Sort sections by priority: most pickers waiting first, then fewest boxes
         List<String> priority = prioritisedSections(trolley);
 
         for (String sectionName : priority) {
