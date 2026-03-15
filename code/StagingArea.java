@@ -1,93 +1,72 @@
+/*
+    authors:        Cathal Dwyer, Giuseppe Esposito;
+    
+    stN:            22391376, 22702205;
+    
+    date:           15/03/2026;
+    
+
+    description:    this rappresent the Staging Area that is a "resource" used by 2 actors:
+                        - stocker 
+                        - delivery 
+
+                    By requirments only 1 stocker can interact with this area at time.
+
+                    But nothing is said about stocker + delivery interaction with this area
+                    (so we will assume that can be done at same time)
+
+                    the class exposes 2 methods:
+                       1. addDelivery  (used by DeliveryThread to add 10 packages to the area)
+                       2. takeUpToTen  (used by the StokerThread to try and pick 10 packages from the area)
+
+
+    approach:       1 Lock to enusre that just 1 stocker is interacting with this area at time,
+                    used (ReentrantLock(true)) with the args = true it ensure fairness so no stocker should get in starvation
+
+                    A queue of section names is used as DataStrucure i.e. ["books", "books", "eletronics"].
+                    We used LinkedBlockingQueue because it's a thread safe producer-consumer queue, this ensure
+                    that the first packege that gets in is the first to go out, but more impotatnly ensure
+                    that we can add pakeges and remove it at the same time. (so as assumed stocker + deliver can work together)
+*/
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
+import java.util.Collections;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.locks.ReentrantLock;
+
 
 public class StagingArea {
+    private final LinkedBlockingQueue<String> boxQueue;     // Thread-safe DS so stocker and delivery can work together
+    private final ReentrantLock stockerLock;                // lock to ensure just one stocker at time is working here
 
-    private final Map<String, Integer> boxes = new HashMap<>();
-    private int totalBoxes = 0;
-
-    public StagingArea() {
-        for (String section : WarehouseConfig.SECTION_NAMES) {
-            boxes.put(section, 0);
-        }
+    public StagingArea(){
+        this.boxQueue = new LinkedBlockingQueue<>();
+        this.stockerLock = new ReentrantLock(true);
     }
 
-    public synchronized void addDelivery(Map<String, Integer> delivery) {
-        for (Map.Entry<String, Integer> entry : delivery.entrySet()) {
-            boxes.merge(entry.getKey(), entry.getValue(), Integer::sum);
-        }
-        totalBoxes += delivery.values().stream().mapToInt(Integer::intValue).sum();
-        notifyAll();
+    public void addDelivery(Map<String, Integer> delivery) {
+        delivery.forEach((section, count) -> boxQueue.addAll(Collections.nCopies(count, section)));
     }
 
-    // Blocks if empty. Only one stocker inside at a time (synchronized).
-    public synchronized Map<String, Integer> takeAll() throws InterruptedException {
-        while (totalBoxes == 0) {
-            wait();
-        }
-        Map<String, Integer> snapshot = new HashMap<>(boxes);
-        for (String section : WarehouseConfig.SECTION_NAMES) {
-            boxes.put(section, 0);
-        }
-        totalBoxes = 0;
-        return snapshot;
-    }
-
-    public synchronized int getTotalBoxes() {
-        return totalBoxes;
-    }
-}
-
-
-class DeliveryThread implements Runnable {
-
-    private final StagingArea stagingArea;
-    private final Random rand;
-    private int deliveryCount = 0;
-
-    public DeliveryThread(StagingArea stagingArea) {
-        this.stagingArea = stagingArea;
-        this.rand = (WarehouseConfig.RANDOM_SEED == -1)
-                ? new Random()
-                : new Random(WarehouseConfig.RANDOM_SEED + 999);
-    }
-
-    @Override
-    public void run() {
-        while (!Thread.currentThread().isInterrupted()) {
-            Clock.sleepTicks(1);
-            if (rand.nextDouble() < WarehouseConfig.DELIVERY_PROBABILITY) {
-                Map<String, Integer> delivery = generateDelivery();
-                stagingArea.addDelivery(delivery);
-                deliveryCount++;
-                logDelivery(delivery);
+    public Map<String, Integer> takeUpToTen() throws InterruptedException {
+        stockerLock.lockInterruptibly();                    // only 1 stocker allowed
+        try {
+            Map<String, Integer> load = new HashMap<>();
+            
+            String firstBox = boxQueue.take();              // wait for at least 1 box to arrive
+            load.put(firstBox, 1);
+            
+            for (int i = 1; i < 10; i++) {                  // try to grab 9 more if they are there
+                String box = boxQueue.poll();
+                if (box == null)                            // the queue is empty quit
+                    break;
+                load.merge(box, 1, Integer::sum);
             }
-        }
-    }
 
-    private Map<String, Integer> generateDelivery() {
-        String[] sections = WarehouseConfig.SECTION_NAMES;
-        int[] counts = new int[sections.length];
-        for (int i = 0; i < WarehouseConfig.BOXES_PER_DELIVERY; i++) {
-            counts[rand.nextInt(sections.length)]++;
+            return load;
+        } finally {
+            stockerLock.unlock();                           // let the next stocker in 
         }
-        Map<String, Integer> delivery = new HashMap<>();
-        for (int i = 0; i < sections.length; i++) {
-            delivery.put(sections[i], counts[i]);
-        }
-        return delivery;
-    }
-
-    private void logDelivery(Map<String, Integer> delivery) {
-        Object[] pairs = new Object[WarehouseConfig.SECTION_NAMES.length * 2 + 2];
-        int idx = 0;
-        pairs[idx++] = "delivery_id";
-        pairs[idx++] = deliveryCount;
-        for (String section : WarehouseConfig.SECTION_NAMES) {
-            pairs[idx++] = section;
-            pairs[idx++] = delivery.getOrDefault(section, 0);
-        }
-        Logger.log("delivery_arrived", pairs);
     }
 }
+

@@ -15,7 +15,6 @@ public class Warehouse {
                 + " section_capacity=" + WarehouseConfig.SECTION_CAPACITY
                 + " trolleys=" + k);
 
-        Clock.getInstance().start();
 
         Map<String, Section> sectionMap = new HashMap<>();
         Section[] sectionArray = new Section[WarehouseConfig.SECTION_NAMES.length];
