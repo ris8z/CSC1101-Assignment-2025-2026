@@ -1,93 +1,105 @@
+/*
+    authors:        Cathal Dwyer, Giuseppe Esposito;
+    
+    stN:            22391376, 22702205;
+    
+    date:           15/03/2026;
+    
+
+    description:    this rappresent the Staging Area that is a "resource" used by 2 actors:
+                        - stocker 
+                        - delivery 
+
+                    By requirments only 1 stocker can interact with this area at time.
+
+                    But nothing is said about stocker + delivery interaction with this area
+                    (so we will assume that can be done at same time)
+
+                    the class exposes 3 methods:
+                       1. addDelivery  (used by DeliveryThread to add 10 packages to the area, and notify stockers of the delivery)
+                       2. waitForBoxes (used by the StokerThread to wait for the delivery to bring some boxes)
+                       3. takeUpToTen  (used by the StokerThread to try and pick 10 packages from the area, and lock the area from other stockers)
+
+
+    approach:       We need to use 2 different locks 
+                        1. to ensure that only 1 stocker is interacting (stockerLock)
+                            - here we don't need a condition (interal waiting room) becauser once you aquire the lock you can do your work (picke the pagakges)
+                            - to avoid starvation we use fair=true that ensure a FIFO queue
+
+                        2. to allow the stockers to wait for a delivery and the delivery to wake them up only we it brings package
+                            - here we need a condtion (watiting room) because when you aquire the lock and there is no boxes you have to wait
+                            into an internal room.
+*/
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
+import java.util.Collections;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.Condition;
+
 
 public class StagingArea {
+    private final LinkedBlockingQueue<String> boxQueue;     // Thread-safe DS so stocker and delivery can work together
+    private final ReentrantLock stockerLock;                // lock to ensure just one stocker at time is working here
+                                                            
+    private final ReentrantLock deliveryLock;
+    private final Condition deliveryWaitingRoom;
 
-    private final Map<String, Integer> boxes = new HashMap<>();
-    private int totalBoxes = 0;
+    public StagingArea(){
+        this.boxQueue = new LinkedBlockingQueue<>();
+        this.stockerLock = new ReentrantLock(true);
+        this.deliveryLock = new ReentrantLock();
+        this.deliveryWaitingRoom = deliveryLock.newCondition();
+    }
 
-    public StagingArea() {
-        for (String section : WarehouseConfig.SECTION_NAMES) {
-            boxes.put(section, 0);
+    public void addDelivery(Map<String, Integer> delivery) {
+        delivery.forEach((section, count) -> boxQueue.addAll(Collections.nCopies(count, section)));
+
+        deliveryLock.lock();                                // Wake up waiting stockers
+        try {
+            deliveryWaitingRoom.signalAll();
+        } finally {
+            deliveryLock.unlock();
         }
     }
 
-    public synchronized void addDelivery(Map<String, Integer> delivery) {
-        for (Map.Entry<String, Integer> entry : delivery.entrySet()) {
-            boxes.merge(entry.getKey(), entry.getValue(), Integer::sum);
-        }
-        totalBoxes += delivery.values().stream().mapToInt(Integer::intValue).sum();
-        notifyAll();
-    }
-
-    // Blocks if empty. Only one stocker inside at a time (synchronized).
-    public synchronized Map<String, Integer> takeAll() throws InterruptedException {
-        while (totalBoxes == 0) {
-            wait();
-        }
-        Map<String, Integer> snapshot = new HashMap<>(boxes);
-        for (String section : WarehouseConfig.SECTION_NAMES) {
-            boxes.put(section, 0);
-        }
-        totalBoxes = 0;
-        return snapshot;
-    }
-
-    public synchronized int getTotalBoxes() {
-        return totalBoxes;
-    }
-}
-
-
-class DeliveryThread implements Runnable {
-
-    private final StagingArea stagingArea;
-    private final Random rand;
-    private int deliveryCount = 0;
-
-    public DeliveryThread(StagingArea stagingArea) {
-        this.stagingArea = stagingArea;
-        this.rand = (WarehouseConfig.RANDOM_SEED == -1)
-                ? new Random()
-                : new Random(WarehouseConfig.RANDOM_SEED + 999);
-    }
-
-    @Override
-    public void run() {
-        while (!Thread.currentThread().isInterrupted()) {
-            Clock.sleepTicks(1);
-            if (rand.nextDouble() < WarehouseConfig.DELIVERY_PROBABILITY) {
-                Map<String, Integer> delivery = generateDelivery();
-                stagingArea.addDelivery(delivery);
-                deliveryCount++;
-                logDelivery(delivery);
+    public void waitForBoxes() throws InterruptedException {
+        deliveryLock.lockInterruptibly();
+        try {
+            while (boxQueue.isEmpty()) {
+                deliveryWaitingRoom.await();
             }
-        }
+        } finally {
+            deliveryLock.unlock();
+        } 
     }
 
-    private Map<String, Integer> generateDelivery() {
-        String[] sections = WarehouseConfig.SECTION_NAMES;
-        int[] counts = new int[sections.length];
-        for (int i = 0; i < WarehouseConfig.BOXES_PER_DELIVERY; i++) {
-            counts[rand.nextInt(sections.length)]++;
-        }
-        Map<String, Integer> delivery = new HashMap<>();
-        for (int i = 0; i < sections.length; i++) {
-            delivery.put(sections[i], counts[i]);
-        }
-        return delivery;
-    }
+    public Map<String, Integer> takeUpToTen() throws InterruptedException {
+        stockerLock.lockInterruptibly();                    // only 1 stocker allowed
+        try {
+            Map<String, Integer> load = new HashMap<>();
+            
+            String firstBox = boxQueue.poll();              
+            if (firstBox == null) {                         // while we were loading the section got emptyed just return an empty cart
+                return load;                                // to the stocker
+            }
+            load.put(firstBox, 1);
+            
+            for (int i = 1; i < 10; i++) {                  // try to grab 9 more if they are there
+                String box = boxQueue.poll();
+                if (box == null)                            // the queue is empty quit
+                    break;
+                load.merge(box, 1, Integer::sum);
+            }
+            
+            Clock.sleepTicks(
+                    WarehouseConfig.STAGING_TAKE_TICKS       // taking from the stage takes always the same time regaredeless of the number of boxes
+            ); 
 
-    private void logDelivery(Map<String, Integer> delivery) {
-        Object[] pairs = new Object[WarehouseConfig.SECTION_NAMES.length * 2 + 2];
-        int idx = 0;
-        pairs[idx++] = "delivery_id";
-        pairs[idx++] = deliveryCount;
-        for (String section : WarehouseConfig.SECTION_NAMES) {
-            pairs[idx++] = section;
-            pairs[idx++] = delivery.getOrDefault(section, 0);
+            return load;
+        } finally {
+            stockerLock.unlock();                           // let the next stocker in 
         }
-        Logger.log("delivery_arrived", pairs);
     }
 }
+
