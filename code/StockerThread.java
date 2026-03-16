@@ -27,8 +27,10 @@ public class StockerThread implements Runnable {
     private final Map<String, Section> sections;
     private final TrolleyPool trolleyPool;
     private final Random rand;
-
     private long nextBreakAt;
+
+    private final Map<String, Integer> currentTrolley = new HashMap<>();
+    private int currentTrolleyId = -1;
 
     public StockerThread(String id, StagingArea stagingArea, Map<String, Section> sections, TrolleyPool trolleyPool) {
         this.id = id;
@@ -42,46 +44,69 @@ public class StockerThread implements Runnable {
     @Override
     public void run() {
         Thread.currentThread().setName(id);
-        while (!Thread.currentThread().isInterrupted()) {
-            try {
+        try {
+            while (!Thread.currentThread().isInterrupted()) {
                 takeBreakIfDue();
                 runOneRound();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            if (currentTrolleyId != -1)                                 // if the thread dies we need to release the trolley
+                trolleyPool.release(currentTrolleyId);
         }
     }
 
     // ONE ROUND LOGIC
     private void runOneRound() throws InterruptedException {
-        String currentLocation = "staging";                                     // we start at staging are
-        
-        int trolleyId = aquireTrolleyOwnership();                               // aquire and load the trolley
-        Map<String, Integer> trolley = loadTrolleyFromStagingArea(trolleyId);
+        if (currentTrolleyId == -1) {                                   // if it don't yet own a trolley
+            stagingArea.waitForBoxes();                                 // wait for any boxes to arrived without holding any trolleys
+            currentTrolleyId = aquireTrolleyOwnership();                // then start waiting for a trolley
+            
+            currentTrolley.clear();                                     // when we got it we first clear our buffer currentTrolley
+            currentTrolley.putAll(                                      // then put all the boxes inside the current trolley
+                    getBoxesFromStaging(currentTrolleyId)
+            );
+        }
 
+        if(trolleyTotal(currentTrolley) == 0){                          // another stocker took all the boxes while we were wating for the trolley
+            releaseTrolleyOwnership(currentTrolleyId, 0);               // we need to release the trolley and start again
+            currentTrolleyId = -1; 
+            return;                                                                        
+        }
        
-        for (String sectionName : prioritisedSections(trolley)) {               // from staging to section (and from section -> section)
-            int toStock = trolley.getOrDefault(sectionName, 0);
+        String currentLocation = "staging";                             // we start at staging area
+        
+        for (String sectionName : prioritisedSections(currentTrolley)) { // from staging to section (and from section -> section)
+            int toStock = currentTrolley.getOrDefault(sectionName, 0);
             if (toStock == 0) 
                 continue;
 
             currentLocation = travelTo(
                     currentLocation,
                     sectionName,
-                    trolleyTotal(trolley),
-                    trolleyId
+                    trolleyTotal(currentTrolley),
+                    currentTrolleyId
             );
-            stockSection(sectionName, toStock, trolley, trolleyId); 
+            
+            stockSection(sectionName, toStock, currentTrolley, currentTrolleyId);
         }
 
+        int remaining = trolleyTotal(currentTrolley);                   
+                                                                        
+        if (!currentLocation.equals("staging")) {                       // back to the staging 
+            travelTo(
+                    currentLocation,
+                    "staging",
+                    remaining,
+                    currentTrolleyId
+            );  
+        }
         
-        int remaining = trolleyTotal(trolley);                                  // back to the staging
-        if (!currentLocation.equals("staging")) {
-            travelTo(currentLocation, "staging", remaining, trolleyId);
+        if (remaining == 0) {                                           // We release the trolly only if there are no boxes in it
+            releaseTrolleyOwnership(currentTrolleyId, 0);
+            currentTrolleyId = -1; 
         }
-
-        releaseTrolleyOwnership(trolleyId, remaining);
     }
 
     private void stockSection(String sectionName, int toStock, Map<String, Integer> trolley, int trolleyId) throws InterruptedException {
@@ -117,9 +142,8 @@ public class StockerThread implements Runnable {
         return trolleyId;
     }
 
-    public Map<String, Integer> loadTrolleyFromStagingArea(int trolleyId) throws InterruptedException {
-        Map<String, Integer> load = stagingArea.takeUpToTen();
-        Clock.sleepTicks(WarehouseConfig.STAGING_TAKE_TICKS);
+    public Map<String, Integer> getBoxesFromStaging(int trolleyId) throws InterruptedException {
+        Map<String, Integer> load = stagingArea.takeUpToTen(); // this function will sleep the time needed
         logLoad(load, trolleyId);
         return new HashMap<>(load);
     }

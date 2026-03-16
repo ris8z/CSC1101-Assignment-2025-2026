@@ -69,51 +69,49 @@ public class PickerThread implements Runnable {
         long currentTick = Clock.getTick();
         long ticksToSleep = baseLineTick - currentTick;
 
-        if (ticksToSleep > 0) {                 // if we are early we sleep
+        if (ticksToSleep > 0) {                                     // if we are early we sleep
             Clock.sleepTicks(ticksToSleep);
-        } else {                                // if we are late we skip sleep and go working
-            baseLineTick = currentTick;         // and we reset the base line at the current time (if we are very late just pretend we start now)
-        }                                       // because if we are very late probaly it's bacuse there were no packages at all for some time.
+        } else {                                                    // if we are late we skip sleep and go working
+            baseLineTick = currentTick;                             // and we reset the base line at the current time (if we are very late just pretend we start now)
+        }                                                           // because if we are very late probaly it's bacuse there were no packages at all for some time.
 
         
-        long waitStart = Clock.getTick();       // Acquire trolley before attempting pick
+        long waitStart = Clock.getTick();                           // Acquire trolley before attempting pick
         int trolleyId = trolleyPool.acquire(false);
         long waitedTicks = Clock.getTick() - waitStart;
-        Logger.log(
-                "acquire_trolley", 
-                "trolley_id", trolleyId, 
-                "waited_ticks", waitedTicks
-        );
+        Logger.log( "acquire_trolley", "trolley_id", trolleyId, "waited_ticks", waitedTicks);
 
-        Section section = sectionArray[rand.nextInt(sectionArray.length)];
-        int pickId = pickIdCounter.getAndIncrement();
+        try{
+            Section section = sectionArray[rand.nextInt(sectionArray.length)];
+            int pickId = pickIdCounter.getAndIncrement();
 
-        Logger.log(
-                "pick_start", 
-                "pick_id", pickId, 
-                "section", section.getName(), 
-                "trolley_id", trolleyId
-        );
+            Logger.log(
+                    "pick_start", 
+                    "pick_id", pickId, 
+                    "section", section.getName(), 
+                    "trolley_id", trolleyId
+            );
 
-        long pickWaitStart = Clock.getTick();
-        String box = section.takeBox();
-        long pickedWaitedTicks = Clock.getTick() - pickWaitStart;
+            long pickWaitStart = Clock.getTick();
+            String box = section.takeBox();
+            long pickedWaitedTicks = Clock.getTick() - pickWaitStart;
 
-        Clock.sleepTicks(WarehouseConfig.PICK_TICKS);
-
-        Logger.log(
-                "pick_done",
-                "pick_id", pickId,
-                "section", section.getName(),
-                "waited_ticks", pickedWaitedTicks,
-                "trolley_id", trolleyId
-        );
-
-        Logger.log(
-                "release_trolley",
-                "trolley_id", trolleyId, 
-                "remaining_load", 0
-        );
-        trolleyPool.release(trolleyId);         // Trolley now empty, release it
+            Clock.sleepTicks(WarehouseConfig.PICK_TICKS);               // note that the spleep is itended put outside of the takeBox() function
+                                                                        // to allow muiple pickers to pick together
+            Logger.log(
+                    "pick_done",
+                    "pick_id", pickId,
+                    "section", section.getName(),
+                    "waited_ticks", pickedWaitedTicks,
+                    "trolley_id", trolleyId
+            );
+        } finally {
+            Logger.log(
+                    "release_trolley",
+                    "trolley_id", trolleyId, 
+                    "remaining_load", 0
+            );
+            trolleyPool.release(trolleyId);                             // Trolley now empty, release it
+        }
     }
 }

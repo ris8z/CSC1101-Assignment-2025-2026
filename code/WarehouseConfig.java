@@ -1,3 +1,15 @@
+/*
+    authors:        Cathal Dwyer, Giuseppe Esposito;
+    
+    stN:            22391376, 22702205;
+    
+    date:           15/03/2026;
+    
+    description:    This is a utility class that loads into ram all the constants 
+                    from the configuration file. 
+
+    approach:       By using the java.util.Properties object and relative type-parsing functions..
+*/
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Properties;
@@ -39,9 +51,9 @@ public class WarehouseConfig {
     public static final int NUM_PICKERS = getInt("num_pickers", 5);
     public static final int TARGET_PICKS_PER_DAY = getInt("target_picks_per_day", 100);
     public static final int PICK_TICKS = getInt("pick_ticks", 1);
-    // Set to -1 for a random seed
-    public static final long RANDOM_SEED = getLong("random_seed", 42);
-    public static final int NUM_TROLLEYS = getInt("num_trolleys", -1);
+    
+    public static final long RANDOM_SEED = getLong("random_seed", 42); // Set to -1 for a random seed
+    public static final int NUM_TROLLEYS = getInt("num_trolleys", -1);  
     public static final int STOCKER_BREAK_INTERVAL_MIN = getInt("stocker_break_interval_min", 200);
     public static final int STOCKER_BREAK_INTERVAL_MAX = getInt("stocker_break_interval_max", 300);
     public static final int STOCKER_BREAK_DURATION     = getInt("stocker_break_duration", 150);

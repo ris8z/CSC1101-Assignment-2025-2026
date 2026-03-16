@@ -1,3 +1,17 @@
+/*
+    authors:        Cathal Dwyer, Giuseppe Esposito;
+    
+    stN:            22391376, 22702205;
+    
+    date:           15/03/2026;
+    
+    description:    this class is resposable for creating delivery events 
+
+    approach:       every tick roll a dice and check if it output less then the DELIVERY_PROBABILITY 
+                    if it is the case it will generate 10 random pakages as request from requriements
+                    and the call staging.addDeliver(new_delivery) to actual bring the package to the staging are
+                    and notify all stockers that a delivery has arrived.
+*/
 import java.util.Random;
 import java.util.HashMap;
 import java.util.Map;

@@ -6,29 +6,29 @@
     date:           15/03/2026;
     
 
-    description:    this Rappresent the trolley pool, an actor can either
-                        - aquire a trolley
+    description:    This class represents the Trolley Pool. Actors (Stockers and Pickers) can either:
+                        - acquire a trolley
                         - release a trolley
-                    these trolley are magic and in fact they get teletransported the the actor that asked for them.
+                    Trolleys are a shared resource. (By requirments they are megic and teleport to the actor)
 
-                    These trolley are a shared resource between 2 actors:
-                        - stokers
-                        - pickers
-
-                    In this case we need to pay attaion a really bad case, if we have a lot of pickers a few stokers
-                    and few trolley there is a chache that all our trolleys get owned by pickers
-                    ergo -> blocking the state of the simulitaion
-
-                    We don't want that because it's against requirements, so we will create an unfair queue,
-                    that always advatages stokers (to ensure that packages are shipped to section and the simulation goes on)
+                    Deadlock Prevention:
+                    if Picker consume all available trolleys while wating in emtpy sections, stockers
+                    will never be able to deliver new boxes -> deadklock state (Circular Wait). 
+                    To prevent this the resource allocation is unfair and advatages the stockers.
 
 
-    approach:       each trolley is a node of a linked list (Queue) with it's ID as value, the access to this queue
-                    is guarded by a lock with to condition (waiting room) one for stockers thread and the other one
-                    for pickers thread, we favour stockers by putting pickers inside the waiting room even if there is
-                    a trolley in the queue, in these we there always will be a trolley for the stockers, and the games go on.
-                    Also when a trolley comes back we first singal to the stockers waiting room and then to the pickers one.
+    approach:       The pool uses a queue of integer IDs protected by a ReentrantLock with two waiting roomes:
+                        1. stockerWaitingRoom 
+                        2. pickerWaitingRoom
                     
+                    - The number of trolley K must be greater than 1 in the system that we designed, othewise
+                        deadlock will happen
+
+                    - Unfair queue: we always reserve 1 trolley for stockers:
+                        if aviable.size <= 1 -> pickers already needs to wait, while stocker wait only if available.isEmpty()
+
+                    - Priority wake-up: when a trolley is realeased, we first wake up the stocker wating room and then the
+                        pickers one
 */
 import java.util.Queue;
 import java.util.LinkedList;
@@ -42,31 +42,35 @@ public class TrolleyPool {
     private final Condition pickerWaitingRoom;
 
     public TrolleyPool(int k) {
-        available = new LinkedList<>();
+        if(k <= 1)                                                  // this is because with 1 trolley we can't find a way to avoid deadlock
+            k = 2;                                                  // and not violiate the requirements at the same time
+
+        this.available = new LinkedList<>();
 
         for (int i = 1; i <= k; i++) 
-            available.add(i);
+            this.available.add(i);
 
-        lock = new ReentrantLock(true);
-        stockerWaitingRoom = lock.newCondition();
-        pickerWaitingRoom = lock.newCondition();
+        this.lock = new ReentrantLock(true);
+        this.stockerWaitingRoom = lock.newCondition();
+        this.pickerWaitingRoom = lock.newCondition();
     }
 
     public int acquire(boolean isStocker) throws InterruptedException {
         lock.lockInterruptibly();
         try {
             if (isStocker) {
-                /* is a stocker thread 
+                /* if is a stocker thread:
                  * put it in the waiting room only if there are 0
                  * trolleys */
                 while (available.isEmpty())         
                     stockerWaitingRoom.await();
             } 
             else {
-                /* is a picker thread 
+                /* if is a picker thread:
                  * put it in the waiting room even when there still is 
-                 * a trolley (bc 1 is always reserved to stockers) */
-                while (available.size() <= 1)       
+                 * a trolley (bc 1 is always reserved to stockers) 
+                 * */
+                while (available.size() <= 1 )       
                     pickerWaitingRoom.await();
             }
 
@@ -80,10 +84,9 @@ public class TrolleyPool {
         lock.lock();
         try {
             available.add(trolleyId);
-            stockerWaitingRoom.signal();  // precedence to the stockers
+            stockerWaitingRoom.signal();                            // precedence to the stockers
             pickerWaitingRoom.signal();
-        } finally {
-            lock.unlock();
+        } finally { lock.unlock();
         }
     }
 

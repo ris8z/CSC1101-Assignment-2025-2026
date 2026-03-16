@@ -25,18 +25,22 @@
                         - it enables access to the number of current pickers waiting.
                        
 
-    approach:       The idea is using a lock with 1 wating room (condition) and a variable 'stockerActive' to flag if a stocker
-                    is working and therefore blocking everyone else.
+    approach:       The idea is using a lock with 2 wating rooms (conditions)
+                        - stockerWaitingRoom
+                        - pickerWaitingRoom 
+                    and a variable 'stockerActive' to flag if a stocker is working and therefore blocking everyone else.
 
                     stocker needs to wait only if another stoker is working (i.e. while stockerActive)
-                    stocker when relaesing wake up all the thread in the waiting room (both stockers and pickers)
+                    stocker when relaesing wake up:
+                        - a new possible stocker -> stockerWaitingRoom.signal()
+                        - all the picker waiting -> pickerWaitingRoom.segnalAll() 
                     (there are also some helper functions such as addBox and waitForSpace used by the StockerThread)
 
-                    pickers needs to wait for boxes and if a stocker is working (i.e. while box == 0 || stockerActive)
+                    pickers needs to wait for avilable boxes and if a stocker is working (i.e. while box == 0 || stockerActive)
                     after they got their ownership of the box the can relase the lock.
 
                     we could even just use synchronized but to avoid starvation we decided to go with ReentrantLock(true)
-                    that accordingly to the java docs wakes up thread in a FIFO manner
+                    that accordingly to the java docs wakes up threads in a FIFO manner
 
 */
 import java.util.concurrent.locks.Condition;
@@ -50,8 +54,10 @@ public class Section {
     private int boxes = 0;             
     private int pickersWaiting = 0;   
     private boolean stockerActive = false;
+
     private final ReentrantLock lock = new ReentrantLock(true);
-    private final Condition waitingRoom = lock.newCondition();
+    private final Condition stockerWaitingRoom = lock.newCondition();
+    private final Condition pickerWaitingRoom = lock.newCondition();
 
     public Section(String name, int capacity) {
         this.name = name;
@@ -63,19 +69,9 @@ public class Section {
         lock.lockInterruptibly();
         try {
             while (stockerActive) {
-                waitingRoom.await();
+                stockerWaitingRoom.await();
             }
             stockerActive = true;
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public void releaseStockerLock() {
-        lock.lock();
-        try {
-            stockerActive = false;
-            waitingRoom.signalAll();
         } finally {
             lock.unlock();
         }
@@ -89,19 +85,33 @@ public class Section {
                 return false; 
             
             boxes++;
-            waitingRoom.signalAll(); 
             return true;
         } finally {
             lock.unlock();
         }
     }
 
+    public void releaseStockerLock() {
+        lock.lock();
+        try {
+            stockerActive = false;
+            stockerWaitingRoom.signal();                            // wake up the possible next stocker
+            pickerWaitingRoom.signalAll();                          // wake up any pickers waiting for boxes
+        } finally {
+            lock.unlock();
+        }
+    }
+
     public void waitForSpace() throws InterruptedException {
-        /* Stocker calls this after releasing lock to wait for space to open up */
+        /* DEPRECATED!
+         *
+         * this mehtod was used by StockerThread in a previous strategy
+         * where we were wating for space insted of going to the next section
+         * */
         lock.lockInterruptibly();
         try {
             while (boxes >= capacity) 
-                waitingRoom.await();
+                stockerWaitingRoom.await();                         // Wait for a picker to take a box
         } finally {
             lock.unlock();
         }
@@ -114,10 +124,10 @@ public class Section {
             pickersWaiting++; 
             try {
                 while (boxes == 0 || stockerActive)
-                    waitingRoom.await();
+                    pickerWaitingRoom.await();
                 
                 boxes--;
-                waitingRoom.signalAll(); 
+                stockerWaitingRoom.signalAll();                     // tell stocker that there is space here
                 return name;
             } finally {
                 pickersWaiting--;
