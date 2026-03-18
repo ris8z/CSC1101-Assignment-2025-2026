@@ -16,9 +16,6 @@
                         - if a picker is interacting other pickers may interact at the same time.
                         - picker will wait for boxes if the area is empty.
 
-                    Requirements does not define if a stocker needs to wait for all picker to finish
-                    (we will assume that it does not care at all)
-
                     the class exposes various methods that:
                         - allow to aquire and relase locks for pickers and stockers,
                         - allow add boxes and remove them from the section.
