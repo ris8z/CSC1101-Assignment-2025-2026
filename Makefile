@@ -1,3 +1,6 @@
+# authors:        Cathal Dwyer, Giuseppe Esposito;
+# stN:            22391376, 22702205;
+
 SRC_DIR = code
 
 all: compile
