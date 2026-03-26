@@ -1,3 +1,5 @@
+import os
+
 try:
     import matplotlib.pyplot as plt
     HAS_MATPLOTLIB = True
@@ -31,7 +33,9 @@ def plot_experiment_1(x_stockers, y_picker_wait, y_stocker_wait):
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
 
     filename = 'exp1.png'
-    plt.savefig(filename)
+    output_dir = os.path.dirname(__file__) 
+    filepath = os.path.join(output_dir, filename)
+    plt.savefig(filepath)
 
 def plot_experiment_2(x_stockers, y_no_breaks, y_breaks):
     if not HAS_MATPLOTLIB:
@@ -51,7 +55,9 @@ def plot_experiment_2(x_stockers, y_no_breaks, y_breaks):
     fig.tight_layout()
 
     filename = 'exp2.png'
-    plt.savefig(filename)
+    output_dir = os.path.dirname(__file__) 
+    filepath = os.path.join(output_dir, filename)
+    plt.savefig(filepath)
 
 
 def plot_experiment_3(x_trolleys, y_picks, y_p_wait, y_s_wait):
@@ -84,4 +90,7 @@ def plot_experiment_3(x_trolleys, y_picks, y_p_wait, y_s_wait):
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='center right')
 
     filename = 'exp3.png'
-    plt.savefig(filename)
+    output_dir = os.path.dirname(__file__) 
+    filepath = os.path.join(output_dir, filename)
+    plt.savefig(filepath)
+

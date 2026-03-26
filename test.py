@@ -1,6 +1,6 @@
 import subprocess
 import re
-import test_plotter as plotter
+from appendix_graphs import test_plotter as plotter
 
 CONFIG_FILE = 'warehouse.properties'
 
