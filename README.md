@@ -8,3 +8,5 @@ Online - Report: https://quip.com/mN4eA5LJD71G/CSC1101-Warehouse-simulation
 
 Online - Short - Report: https://quip.com/5LtfAlELYOTf/CSC1101-Warehouse-simulation-short-version
 
+Video walkthrough: https://drive.google.com/file/d/1hCkc6wIlMFFpVbD9D2Z8R4xQ0uPosWLX/view?usp=sharing
+
