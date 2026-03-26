@@ -1,5 +1,6 @@
 import subprocess
 import re
+import test_plotter as plotter
 
 CONFIG_FILE = 'warehouse.properties'
 
@@ -55,9 +56,9 @@ def run_simulation():
     
     return p_avg, s_avg, p_cnt 
 
-def experiment_1_tradeoff():
+def experiment_1():
     """ 
-    This test is too try to prove that we can't increase performance infinitly just by adding more threads
+    In this test we try to understand which is the right number of stockers that lead to good performance.
     We keep picker and trolleys fixed, and we change the number of stocker between 1 to 15 to see if waiting time decrease
     """
     base_settings = {
@@ -92,8 +93,10 @@ def experiment_1_tradeoff():
     print(f"AVG Picker Wait    = {picker_wait_results}")
     print(f"AVG Stocker Wait   = {stocker_wait_results}")
 
+    plotter.plot_experiment_1(stocker_counts, picker_wait_results, stocker_wait_results)
 
-def experiment_2_starvation():
+
+def experiment_2():
     """
     In this test we try to break the logic of our unfair trolley resource (we reserve 1 trolley always to stockers)
     It is divided in the part:
@@ -149,7 +152,9 @@ def experiment_2_starvation():
     print(f"Y_picker_throughput (NO Breaks) = {picker_throughput_no_breaks}")
     print(f"Y_picker_throughput (BREAKS)    = {picker_throughput_with_breaks}\n")
 
-def experiment_3_trolley():
+    plotter.plot_experiment_2(stocker_counts, picker_throughput_no_breaks, picker_throughput_with_breaks)
+
+def experiment_3():
     """
     This test is to understand which is the better value of trolleys and if it is related to the fomula k = [S + P] / 2.
     We keep fixed: 5 Pickers, 5 Stockers and we try a range of trolly values from 2 to 10.
@@ -188,13 +193,15 @@ def experiment_3_trolley():
     print(f"Y_Picker_Wait       = {picker_wait_results}")
     print(f"Y_Stocker_Wait      = {stocker_wait_results}\n")
 
+    plotter.plot_experiment_3(trolley_counts, picker_throughput_results, picker_wait_results, stocker_wait_results)
+
 def main():
     original_config = read_original_config()
     
     try:
-        #experiment_1_tradeoff()
-        #experiment_2_starvation()
-        experiment_3_trolley()
+        #experiment_1()
+        #experiment_2()
+        experiment_3()
     finally:
         restore_config(original_config)
 
